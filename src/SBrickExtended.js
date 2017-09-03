@@ -124,7 +124,7 @@ let SBrickExtended = (function() {
 
 		/**
 		* get interpretation for a sensor value, depending on the kind of sensor
-		* @returns {string} Interpretation [close | intermediate | clear] (motion) or [flat | left | right | up | down] (tilt)
+		* @returns {string} Interpretation [close | midrange | clear] (motion) or [flat | left | right | up | down] (tilt)
 		*/
 		const _getSensorInterpretation = function(value, sensorType) {
 			let interpretation = 'unknown';
@@ -134,7 +134,7 @@ let SBrickExtended = (function() {
 				if (value <= 60) {
 					interpretation = 'close';
 				} else if (isValueBetween(value, 61, 109)) {
-					interpretation = 'intermediate';
+					interpretation = 'midrange';
 				} else if (value >= 110) {
 					interpretation = 'clear';
 				}
