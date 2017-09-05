@@ -43,6 +43,24 @@ let SBrickExtended = (function() {
 			{ angle: 90, power: 200, powerMin: 180, powerMax: 255}
 		];
 
+		const sensorTypes = [
+			{ type: 'tilt',		min: 48,	max: 52},
+			{ type: 'motion',	min: 105,	max: 110}
+		];
+
+		const tiltStates = [
+			{ type: 'up',		min: 14,	max: 18 },
+			{ type: 'right', 	min: 51,	max: 55 },
+			{ type: 'flat', 	min: 95,	max: 100 },
+			{ type: 'down', 	min: 143,	max: 148 },
+			{ type: 'left', 	min: 191,	max: 196 }
+		];
+
+		const motionStates = [
+			{ type: 'close',				max: 60 },
+			{ type: 'midrange',	min: 61,	max: 109 },
+			{ type: 'clear', 	min: 110 }
+		];
 
 		const MAX = 255;// copy of sbrick.js MAX value - we need this in general helper functions
 		const MAX_QD = 127;// copy of sbrick.js MAX_QD value - we need this in general helper functions
@@ -65,6 +83,7 @@ let SBrickExtended = (function() {
 		};
 
 
+
 		/**
 		* translate servo's power to corresponding angle-value
 		* @param {number} power - The current power (0-255) of the servo motor
@@ -85,6 +104,7 @@ let SBrickExtended = (function() {
 		};
 
 
+
 		/**
 		* drive motor does not seem to work below certain power threshold value
 		* translate the requested percentage to the actual working power range
@@ -101,6 +121,7 @@ let SBrickExtended = (function() {
 
 			return power;
 		};
+
 
 
 		/**
@@ -128,64 +149,46 @@ let SBrickExtended = (function() {
 		* @returns {string} - The type: unknown (default) | tilt | motion
 		*/
 		const _getSensorType = function(ch0Value) {
-			let sensorType = 'unknown';
-			if (isValueBetween(ch0Value, 48, 52)) {
-				sensorType = 'tilt';
-			} if (isValueBetween(ch0Value, 105, 110)) {
-				sensorType = 'motion';
-			}
-
-			return sensorType;
+			return _rangeValueToType(ch0Value, sensorTypes);
 		};
 
 
 
 		/**
 		* get interpretation for a sensor value, depending on the kind of sensor
-		* @returns {string} Interpretation: unknown (default) or [close | intermediate | clear] (motion) or [flat | left | right | up | down] (tilt)
+		* @returns {string} Interpretation: unknown (default) or [close | midrange | clear] (motion) or [flat | left | right | up | down] (tilt)
 		*/
 		const _getSensorInterpretation = function(value, sensorType) {
 			let interpretation = 'unknown';
 
 			if (sensorType === 'motion') {
-
-				if (value <= 60) {
-					interpretation = 'close';
-				} else if (isValueBetween(value, 61, 109)) {
-					interpretation = 'intermediate';
-				} else if (value >= 110) {
-					interpretation = 'clear';
-				}
-
+				interpretation = _rangeValueToType(value, motionStates);
 			} else if (sensorType === 'tilt') {
-
-				if (isValueBetween(value, 14, 18)) {
-					interpretation = 'up';
-				} else if (isValueBetween(value, 51, 55)) {
-					interpretation = 'right';
-				} else if (isValueBetween(value, 95, 100)) {
-					interpretation = 'flat';
-				} else if (isValueBetween(value, 143, 148)) {
-					interpretation = 'down';
-				} else if (isValueBetween(value, 191, 196)) {
-					interpretation = 'left';
-				}
-
+				interpretation = _rangeValueToType(value, tiltStates);
 			}
 
 			return interpretation;
 		};
 
 
-		/**
-		* check if a value is between two other values
-		* @returns {undefined}
-		*/
-		const isValueBetween = function(value, compare1, compare2) {
-			const min = (compare1 <= compare2) ? compare1 : compare2,
-				max = (compare1 > compare2) ? compare1 : compare2;
 
-			return (value >= min && value <= max);
+		/**
+		* get a type depending on which range a value is within
+		* @param {number} value - The value to check
+		* @param {array} types - An array of type-objects: { type: string, [min: number,] [max: number]}
+		* @returns {string} type - The found type | 'unknown'
+		*/
+		const _rangeValueToType = function(value, types) {
+			let type = 'unkown';
+
+			types.forEach((option) => {
+				const {min, max} = option;
+				if ( (typeof min === 'undefined' || value >= min) && (typeof max === 'undefined' || value <= max) ) {
+					type = option.type;
+				}
+			});
+
+			return type;
 		};
 
 	//-- End general stuff that's equal for all instances,
@@ -299,21 +302,24 @@ let SBrickExtended = (function() {
 				let sensorObj = this._getSensorObj(portId);
 				this.getSensor(portId, sensorSeries)
 					.then((sensorData) => {
-						// sensorData: { type, voltage, ch0_raw, ch1_raw, value }
+						// sensorData looks like this: { type, voltage, ch0_raw, ch1_raw, value }
+
+						const interpretation = _getSensorInterpretation(sensorData.value, sensorData.type),
+							{value, type} = sensorData;
 
 						// add interpretation to sensorData obj
-						sensorData.interpretation = _getSensorInterpretation(sensorData.value, sensorData.type);
+						sensorData.interpretation = interpretation;
 
 						// send event if the raw value of the sensor has changed
-						if (sensorData.value !== sensorObj.lastValue) {
-							sensorObj.lastValue = sensorData.value;
+						if (value !== sensorObj.lastValue) {
+							sensorObj.lastValue = value;
 							const changeValueEvent = new CustomEvent('sensorvaluechange.sbrick', {detail: sensorData});
 							document.body.dispatchEvent(changeValueEvent);
 						}
 
 						// send event if the interpretation of the sensor has changed
-						if (sensorData.interpretation !== sensorObj.lastInterpretation) {
-							sensorObj.lastInterpretation = sensorData.interpretation;
+						if (interpretation !== sensorObj.lastInterpretation) {
+							sensorObj.lastInterpretation = interpretation;
 							const event = new CustomEvent('sensorchange.sbrick', {detail: sensorData});
 							document.body.dispatchEvent(event);
 							
