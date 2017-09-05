@@ -124,7 +124,7 @@ let SBrickExtended = (function() {
 
 		/**
 		* get interpretation for a sensor value, depending on the kind of sensor
-		* @returns {string} Interpretation [close | midrange | clear] (motion) or [flat | left | right | up | down] (tilt)
+		* @returns {string} Interpretation [close | intermediate | clear] (motion) or [flat | left | right | up | down] (tilt)
 		*/
 		const _getSensorInterpretation = function(value, sensorType) {
 			let interpretation = 'unknown';
@@ -134,7 +134,7 @@ let SBrickExtended = (function() {
 				if (value <= 60) {
 					interpretation = 'close';
 				} else if (isValueBetween(value, 61, 109)) {
-					interpretation = 'midrange';
+					interpretation = 'intermediate';
 				} else if (value >= 110) {
 					interpretation = 'clear';
 				}
@@ -188,17 +188,10 @@ let SBrickExtended = (function() {
 			constructor( sbrick_name ) {
 				super( sbrick_name);
 
-				// make vars available for outside world
-				this.PORTS = {
-					TOP_LEFT: 0,
-					BOTTOM_LEFT: 1,
-					TOP_RIGHT: 2,
-					BOTTOM_RIGHT: 3
-				};
-
 				// vars for sensor timeouts
 				this.sensorTimer = null;
 				this.sensorTimeoutIsCancelled = false;
+				this.sensors = [];// will contain object for each sensor port with timer: {lastValue, lastInterpretation, timer, keepAlive}
 			};
 
 
@@ -241,41 +234,13 @@ let SBrickExtended = (function() {
 
 
 			/**
-			* read sensor data and send event
-			* @param {number} portId - The id of the port to read sensor data from
-			* @returns {undefined}
-			*/
-			getSensorData(portId) {
-				this.getSensor(portId, 'wedo')
-					.then((sensorData) => {
-						// sensorData: { type, voltage, ch0_raw, ch1_raw, value }
-						// add interpretation to sensorData
-						sensorData. interpretation = _getSensorInterpretation(sensorData.value, sensorData.type);
-						const event = new CustomEvent('sensorchange.sbrick', {detail: sensorData});
-						//TODO event should only be sent if sensorvalue really changes
-						document.body.dispatchEvent(event);
-
-						clearTimeout(this.sensorTimer);// clear timeout within then-clause so it will always clear right before setting new one
-						if (!this.sensorTimeoutIsCancelled) {
-							// other functions may want to cancel the sensorData timeout
-							// but they can't call clearTimeout, because that might be called when the promise is pending
-							this.sensorTimer = setTimeout(() => {
-								this.getSensorData(portId);
-							}, 200);
-						}
-					});
-			}
-
-
-
-			/**
-			* start stream of sensor measurements
+			* start stream of sensor measurements and send a sensorstart.sbrick event
 			* @param {number} portId - The id of the port to read sensor data from
 			* @returns {undefined}
 			*/
 			startSensor(portId) {
 				this.sensorTimeoutIsCancelled = false;
-				this.getSensorData(portId);
+				this._getNextSensorData(portId);
 				const data = {portId};
 
 				const event = new CustomEvent('sensorstart.sbrick', {detail: data});
@@ -284,19 +249,89 @@ let SBrickExtended = (function() {
 
 
 			/**
-			* stop the sensor
+			* stop stream of sensor measurements and send a sensorstop.sbrick event
 			* @returns {undefined}
 			*/
 			stopSensor(portId) {
 				// sensorData timeout is only set when the promise resolves
 				// but in the time the promise is pending, there is no timeout to cancel
-				// so let's set a var that has to be checked before calling a new setTimeout
-				this.sensorTimeoutIsCancelled = true;
+				// so let's manipulate a property that has to be checked before calling a new setTimeout
+				const sensorObj = this._getSensorObj(portId);
+				sensorObj.keepAlive = false;
 				const data = {portId};
 
 				const event = new CustomEvent('sensorstop.sbrick', {detail: data});
 				document.body.dispatchEvent(event);
 			};
+
+
+			// PRIVATE FUNCTIONS
+
+
+
+			/**
+			* get a new reading of sensor data; send event and set timeout to call this function again
+			* @param {number} portId - The id of the port to read sensor data from
+			* @param {string} sensorSeries - not implemented yet - in the future it will manage different sensor series (wedo (default), EV3, NXT, ...)
+			* @returns {undefined}
+			*/
+			_getNextSensorData(portId, sensorSeries = 'wedo') {
+				let sensorObj = this._getSensorObj(portId);
+				this.getSensor(portId, sensorSeries)
+					.then((sensorData) => {
+						// sensorData: { type, voltage, ch0_raw, ch1_raw, value }
+
+						// add interpretation to sensorData obj
+						sensorData.interpretation = _getSensorInterpretation(sensorData.value, sensorData.type);
+
+						// send event if the raw value of the sensor has changed
+						if (sensorData.value !== sensorObj.lastValue) {
+							sensorObj.lastValue = sensorData.value;
+							const changeValueEvent = new CustomEvent('sensorvaluechange.sbrick', {detail: sensorData});
+							document.body.dispatchEvent(changeValueEvent);
+						}
+
+						// send event if the interpretation of the sensor has changed
+						if (sensorData.interpretation !== sensorObj.lastInterpretation) {
+							sensorObj.lastInterpretation = sensorData.interpretation;
+							const event = new CustomEvent('sensorchange.sbrick', {detail: sensorData});
+							document.body.dispatchEvent(event);
+							
+						}
+
+						// other functions may want to cancel the sensorData timeout, but they can't use clearTimeout
+						// because that might be called when the promise is pending (when there is no current timeout),
+						// and new timeout would be set in the then-clause when the promise resolves.
+						// so they can set the keepAlive property and we'll check that before setting a new timeout
+						if (sensorObj.keepAlive) {
+							clearTimeout(sensorObj.timer);
+							sensorObj.timer = setTimeout(() => {
+								this._getNextSensorData(portId);
+							}, 200);
+						}
+					});
+			}
+
+
+			/**
+			* get a ports object with sensor properties (lastValue etc)
+			* @param {number} portId - The id of the port we want to read the sensor from
+			* @returns {object} - object with sensor properties ({lastValue, lastInterpretation, timer, keepAlive})
+			*/
+			_getSensorObj(portId) {
+				let sensorObj = this.sensors[portId];
+				if (typeof sensorObj === 'undefined') {
+					sensorObj = {
+						lastValue: null,
+						lastInterpretation: null,
+						timer: null,
+						keepAlive: true
+					};
+					this.sensors[portId] = sensorObj;
+				}
+				return sensorObj;
+			};
+			
 
 
 
