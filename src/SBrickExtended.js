@@ -123,8 +123,26 @@ let SBrickExtended = (function() {
 
 
 		/**
+		* get the type of sensor (tilt, motion) by channel value
+		* @param {number} ch0Value - The value of the sensor's channel 0
+		* @returns {string} - The type: unknown (default) | tilt | motion
+		*/
+		const _getSensorType = function(ch0Value) {
+			let sensorType = 'unknown';
+			if (isValueBetween(ch0Value, 48, 52)) {
+				sensorType = 'tilt';
+			} if (isValueBetween(ch0Value, 105, 110)) {
+				sensorType = 'motion';
+			}
+
+			return sensorType;
+		};
+
+
+
+		/**
 		* get interpretation for a sensor value, depending on the kind of sensor
-		* @returns {string} Interpretation [close | intermediate | clear] (motion) or [flat | left | right | up | down] (tilt)
+		* @returns {string} Interpretation: unknown (default) or [close | intermediate | clear] (motion) or [flat | left | right | up | down] (tilt)
 		*/
 		const _getSensorInterpretation = function(value, sensorType) {
 			let interpretation = 'unknown';
@@ -239,7 +257,9 @@ let SBrickExtended = (function() {
 			* @returns {undefined}
 			*/
 			startSensor(portId) {
-				this.sensorTimeoutIsCancelled = false;
+				const sensorObj = this._getSensorObj(portId);
+				sensorObj.keepAlive = true;
+
 				this._getNextSensorData(portId);
 				const data = {portId};
 
