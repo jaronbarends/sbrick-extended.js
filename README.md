@@ -33,37 +33,67 @@ You can now use all of sbrick.js's functionality, plus some extended functionali
 
 ## Additional public methods
 
-### Control lights
+### `setLights(data)`
+
+Method for controlling lights. This is actually a convenience wrapper around `sbrick.drive`.
 
 ```
-setLights({portId, power (0-100)})
+const data = {
+    portId: mySBrick.TOPLEFT,
+    power: 100// number 0-100
+};
+setLights(data);
 ```
 
-Convenience method for controlling lights.
-Method should return `sbrick.drive`'s promise (to be implemented)
+Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
 
-### Control drive motor
+### `setDrive(data)`
 
-```
-setDrive({portId, power (0-100), direction})
-```
-
-### Control servo motor
+Method for controlling a drive motor. This is actually a convenience wrapper around `sbrick.drive`.
 
 ```
-setServo({portId, angle (0-90), direction})
+const data = {
+    portId: mySBrick.TOPLEFT,
+    power: 100,// number 0-100
+    direction: mySBrick.CCW
+};
+setDrive(data);
 ```
 
-### Start stream of sensor measurements
+Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
+
+### `setServo(data)`
+
+Method for controlling a servo motor. This is actually a convenience wrapper around `sbrick.drive`.
 
 ```
-startSensor(portId)
+const data = {
+    portId: mySBrick.TOPLEFT,
+    angle: 90,// number 0-90
+    direction: mySBrick.CCW
+};
+setServo(data);
 ```
 
-### Stop stream of sensor measurements
+Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
+
+Be aware that the Power Functions servo motors only allow 7 angles per 90°. These angles are in increments of approximately 13°, i.e. 13, 26, 39, 52, 65, 78, 90. `setServo` calculates the supported angle that's closest to the value of `data`'s `angle`-property
+
+
+### `startSensor(portId)`
+
+Starts a stream of sensor measurements and sends events when the sensor's value or the interpretation of the value changes.
 
 ```
-stopSensor(portId)
+startSensor(mySBrick.TOPLEFT);
+```
+
+### `stopSensor(portId)`
+
+Stop a stream of sensor measurements.
+
+```
+stopSensor(mySBrick.TOPLEFT);
 ```
 
 ## Additional events
