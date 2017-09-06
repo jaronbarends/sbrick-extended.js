@@ -57,9 +57,9 @@ let SBrickExtended = (function() {
 		];
 
 		const motionStates = [
-			{ type: 'close',				max: 60 },
+			{ type: 'close',				max: 60 },// no min for close
 			{ type: 'midrange',	min: 61,	max: 109 },
-			{ type: 'clear', 	min: 110 }
+			{ type: 'clear', 	min: 110 }// no max for clear
 		];
 
 		const MAX = 255;// copy of sbrick.js MAX value - we need this in general helper functions
