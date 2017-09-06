@@ -42,7 +42,7 @@ const data = {
     portId: mySBrick.TOPLEFT,
     power: 100// number 0-100
 };
-setLights(data);
+mySBrick.setLights(data);
 ```
 
 Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
@@ -57,7 +57,7 @@ const data = {
     power: 100,// number 0-100
     direction: mySBrick.CCW
 };
-setDrive(data);
+mySBrick.setDrive(data);
 ```
 
 Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
@@ -72,7 +72,7 @@ const data = {
     angle: 90,// number 0-90
     direction: mySBrick.CCW
 };
-setServo(data);
+mySBrick.setServo(data);
 ```
 
 Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
@@ -85,7 +85,7 @@ Be aware that the Power Functions servo motors only allow 7 angles per 90°. The
 Starts a stream of sensor measurements and sends events when the sensor's value or the interpretation of the value changes.
 
 ```
-startSensor(mySBrick.TOPLEFT);
+mySBrick.startSensor(mySBrick.TOPLEFT);
 ```
 
 ### `stopSensor(portId)`
@@ -93,7 +93,7 @@ startSensor(mySBrick.TOPLEFT);
 Stop a stream of sensor measurements.
 
 ```
-stopSensor(mySBrick.TOPLEFT);
+mySBrick.stopSensor(mySBrick.TOPLEFT);
 ```
 
 ## Additional events
