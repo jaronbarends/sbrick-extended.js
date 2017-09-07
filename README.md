@@ -45,7 +45,7 @@ const data = {
 mySBrick.setLights(data);
 ```
 
-Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
+Returns promise returning object `{portId, direction, power (0-255!), mode}`. (This is the promise `sbrick.drive` returns)
 
 ### `setDrive(data)`
 
@@ -60,7 +60,7 @@ const data = {
 mySBrick.setDrive(data);
 ```
 
-Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
+Returns promise returning object `{portId, direction, power (0-255!), mode}`. (This is the promise `sbrick.drive` returns)
 
 ### `setServo(data)`
 
@@ -75,18 +75,20 @@ const data = {
 mySBrick.setServo(data);
 ```
 
-Returns `undefined`. (It should return `sbrick.drive`'s promise (to be implemented))
+Returns promise returning object `{portId, direction, power (0-255!), mode}`. (This is the promise `sbrick.drive` returns)
 
 Be aware that the Power Functions servo motors only allow 7 angles per 90°. These angles are in increments of approximately 13°, i.e. 13, 26, 39, 52, 65, 78, 90. `setServo` calculates the supported angle that's closest to the value of `data`'s `angle`-property
 
 
 ### `startSensor(portId)`
 
-Starts a stream of sensor measurements and sends events when the sensor's value or the interpretation of the value changes.
+Starts a stream of sensor measurements and sends events when the sensor's value or the state (corresponding to a range of values) changes.
 
 ```
 mySBrick.startSensor(mySBrick.TOPLEFT);
 ```
+
+returns promise returning `undefined`
 
 ### `stopSensor(portId)`
 
@@ -95,6 +97,8 @@ Stop a stream of sensor measurements.
 ```
 mySBrick.stopSensor(mySBrick.TOPLEFT);
 ```
+
+returns `undefined`
 
 ## Additional events
 
@@ -110,17 +114,16 @@ data sent with `event.detail`: `{portId}`
 
 ### sensorchange.sbrick
 
-Triggered when the interpretation of a port's sensor value changes. (Sensors return a value; a range of values corresponds with an interpretation.) Interpretations depend on the type of sensor.
-It would be better to call this _state_ instead of _interpretation_
+Triggered when a port's sensor's state changes. (Sensors return a value; a range of values corresponds with an state.) States depend on the type of sensor.
 
-data sent with `event.detail`: `{type, voltage, ch0_raw, ch1_raw, value, interpretation}`
+data sent with `event.detail`: `{type, voltage, ch0_raw, ch1_raw, value, state}`
 
-Possible `interpretation` values for motion sensor:
+Possible `state` values for motion sensor:
 `close`: the sensor is within a few centimeters of an object;
 `midrange`: the sensor is within ca. 5-15 centimeters of an object;
 `clear`: there is no object within ca 15 centimeters of the sensor
 
-Possible `interpretation` values for tilt sensor:
+Possible `state` values for tilt sensor:
 `flat`, `up`, `down`, `left`, `right`
 
 ### sensorvaluechange.sbrick

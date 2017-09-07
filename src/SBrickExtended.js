@@ -69,110 +69,6 @@ let SBrickExtended = (function() {
 
 
 		/**
-		* translate servo's angle to corresponding power-value
-		* @param {number} angle - The angle of the servo motor
-		* @returns {number} The corresponding power value (0-255)
-		*/
-		const _servoAngleToPower = function(angle) {
-			// servo motor only supports 7 angles per 90 degrees, i.e. increments of 13 degrees
-			angle = parseInt(angle, 10);
-			const idx = Math.round(angle/13);
-			let power = powerAngles[idx].power;
-
-			return power;
-		};
-
-
-
-		/**
-		* translate servo's power to corresponding angle-value
-		* @param {number} power - The current power (0-255) of the servo motor
-		* @returns {number} The corresponding angle value
-		*/
-		const _servoPowerToAngle = function(power) {
-			let angle = 0;
-			power = parseInt(power, 10);
-			for (let i=0, len=powerAngles.length; i<len; i++) {
-				const obj = powerAngles[i];
-				if (power === obj.power) {
-					angle = obj.angle;
-					break;
-				}
-			}
-
-			return angle;
-		};
-
-
-
-		/**
-		* drive motor does not seem to work below certain power threshold value
-		* translate the requested percentage to the actual working power range
-		* @param {number} powerPerc - The requested power as percentage
-		* @returns {number}	- A value within the acutal power range
-		*/
-		const _drivePercentageToPower = function(powerPerc) {
-			let power = 0;
-			if (powerPerc !== 0) {
-				// define the power range within which the drive does work
-				const powerRange = MAX - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK;
-				power = Math.round(powerRange * powerPerc/100 + MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK);
-			}
-
-			return power;
-		};
-
-
-
-		/**
-		* drive motor does not seem to work below certain power threshold value
-		* translate the actual power in the percentage within the actual working power range
-		* @returns {number} - The percentage within the actual power range
-		*/
-		const _drivePowerToPercentage = function(power) {
-			// define the power range within which the drive does work
-			let powerPerc = 0;
-			if (power !== 0) {
-				const powerRange = MAX - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK,
-					relativePower = power - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK;
-				powerPerc = Math.round(100 * relativePower / powerRange);
-			}
-
-			return powerPerc;
-		};
-
-
-
-		/**
-		* get the type of sensor (tilt, motion) by channel value
-		* @param {number} ch0Value - The value of the sensor's channel 0
-		* @returns {string} - The type: unknown (default) | tilt | motion
-		*/
-		const _getSensorType = function(ch0Value) {
-			return _rangeValueToType(ch0Value, sensorTypes);
-		};
-
-
-
-		/**
-		* get interpretation for a sensor value, depending on the kind of sensor
-		* @returns {string} Interpretation: unknown (default) or [close | midrange | clear] (motion) or [flat | left | right | up | down] (tilt)
-		*/
-		const _getSensorInterpretation = function(value, sensorType) {
-			let interpretation = 'unknown';
-
-			if (sensorType === 'motion') {
-				interpretation = _rangeValueToType(value, motionStates);
-			} else if (sensorType === 'tilt') {
-				interpretation = _rangeValueToType(value, tiltStates);
-			}
-
-			return interpretation;
-		};
-
-
-
-		/**
 		* get a type depending on which range a value is within
 		* @param {number} value - The value to check
 		* @param {array} types - An array of type-objects: { type: string, [min: number,] [max: number]}
@@ -212,7 +108,7 @@ let SBrickExtended = (function() {
 				// vars for sensor timeouts
 				this.sensorTimer = null;
 				this.sensorTimeoutIsCancelled = false;
-				this.sensors = [];// will contain object for each sensor port with timer: {lastValue, lastInterpretation, timer, keepAlive}
+				this.sensors = [];// will contain object for each sensor port with timer: {lastValue, lastState, timer, keepAlive}
 			};
 
 
@@ -221,11 +117,11 @@ let SBrickExtended = (function() {
 			/**
 			* update a set of lights
 			* @param {object} data - New settings for this port {portId, power (0-100), direction}
-			* @returns {undefined}
+			* @returns {promise returning object} - { Returned object: portId, direction, power (0-255!), mode}
 			*/
 			setLights(data) {
 				data.power = Math.round(this.MAX * data.power/100);
-				this.drive(data);
+				return this.drive(data);
 			};
 
 
@@ -233,11 +129,11 @@ let SBrickExtended = (function() {
 			/**
 			* update a drive motor
 			* @param {object} data - New settings for this port {portId, power (0-100), direction}
-			* @returns {undefined}
+			* @returns {promise returning object} - { Returned object: portId, direction, power (0-255!), mode}
 			*/
 			setDrive(data) {
-				data.power = _drivePercentageToPower(data.power);
-				this.drive(data);
+				data.power = this.drivePercentageToPower(data.power);
+				return this.drive(data);
 			};
 
 
@@ -245,11 +141,11 @@ let SBrickExtended = (function() {
 			/**
 			* update a servo motor
 			* @param {object} data - New settings for this port {portId, angle (0-90), direction}
-			* @returns {undefined}
+			* @returns {promise returning object} - { Returned object: portId, direction, power (0-255!), mode}
 			*/
 			setServo(data) {
-				data.power = _servoAngleToPower(data.angle);
-				this.drive(data);
+				data.power = this.servoAngleToPower(data.angle);
+				return this.drive(data);
 			};
 
 
@@ -257,17 +153,17 @@ let SBrickExtended = (function() {
 			/**
 			* start stream of sensor measurements and send a sensorstart.sbrick event
 			* @param {number} portId - The id of the port to read sensor data from
-			* @returns {undefined}
+			* @returns {promise returning undefined} - The promise returned by sbrick.getSensor, but somehow that promise's data isn't returned
 			*/
 			startSensor(portId) {
 				const sensorObj = this._getSensorObj(portId);
 				sensorObj.keepAlive = true;
 
-				this._getNextSensorData(portId);
-				const data = {portId};
-
-				const event = new CustomEvent('sensorstart.sbrick', {detail: data});
+				const data = {portId},
+					event = new CustomEvent('sensorstart.sbrick', {detail: data});
 				document.body.dispatchEvent(event);
+
+				return this._getNextSensorData(portId);
 			}
 
 
@@ -288,6 +184,109 @@ let SBrickExtended = (function() {
 			};
 
 
+			/**
+			* translate servo's angle to corresponding power-value
+			* @param {number} angle - The angle of the servo motor
+			* @returns {number} The corresponding power value (0-255)
+			*/
+			servoAngleToPower(angle) {
+				// servo motor only supports 7 angles per 90 degrees, i.e. increments of 13 degrees
+				angle = parseInt(angle, 10);
+				const idx = Math.round(angle/13);
+				let power = powerAngles[idx].power;
+
+				return power;
+			};
+
+
+
+			/**
+			* translate servo's power to corresponding angle-value
+			* @param {number} power - The current power (0-255) of the servo motor
+			* @returns {number} The corresponding angle value
+			*/
+			servoPowerToAngle(power) {
+				let angle = 0;
+				power = parseInt(power, 10);
+				for (let i=0, len=powerAngles.length; i<len; i++) {
+					const obj = powerAngles[i];
+					if (power === obj.power) {
+						angle = obj.angle;
+						break;
+					}
+				}
+
+				return angle;
+			};
+
+
+
+			/**
+			* drive motor does not seem to work below certain power threshold value
+			* translate the requested percentage to the actual working power range
+			* @param {number} powerPerc - The requested power as percentage
+			* @returns {number}	- A value within the acutal power range
+			*/
+			drivePercentageToPower(powerPerc) {
+				let power = 0;
+				if (powerPerc !== 0) {
+					// define the power range within which the drive does work
+					const powerRange = MAX - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK;
+					power = Math.round(powerRange * powerPerc/100 + MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK);
+				}
+
+				return power;
+			};
+
+
+
+			/**
+			* drive motor does not seem to work below certain power threshold value
+			* translate the actual power in the percentage within the actual working power range
+			* @returns {number} - The percentage within the actual power range
+			*/
+			drivePowerToPercentage(power) {
+				// define the power range within which the drive does work
+				let powerPerc = 0;
+				if (power !== 0) {
+					const powerRange = MAX - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK,
+						relativePower = power - MIN_VALUE_BELOW_WHICH_MOTOR_DOES_NOT_WORK;
+					powerPerc = Math.round(100 * relativePower / powerRange);
+				}
+
+				return powerPerc;
+			};
+
+
+
+			/**
+			* get the type of sensor (tilt, motion) by channel value
+			* @param {number} ch0Value - The value of the sensor's channel 0
+			* @returns {string} - The type: unknown (default) | tilt | motion
+			*/
+			getSensorType(ch0Value) {
+				return _rangeValueToType(ch0Value, sensorTypes);
+			};
+
+
+
+			/**
+			* determine the state for a sensor value, depending on the kind of sensor
+			* @returns {string} state: unknown (default) or [close | midrange | clear] (motion) or [flat | left | right | up | down] (tilt)
+			*/
+			getSensorState(value, sensorType) {
+				let state = 'unknown';
+
+				if (sensorType === 'motion') {
+					state = _rangeValueToType(value, motionStates);
+				} else if (sensorType === 'tilt') {
+					state = _rangeValueToType(value, tiltStates);
+				}
+
+				return state;
+			};
+
+
 			// PRIVATE FUNCTIONS
 
 
@@ -300,15 +299,15 @@ let SBrickExtended = (function() {
 			*/
 			_getNextSensorData(portId, sensorSeries = 'wedo') {
 				let sensorObj = this._getSensorObj(portId);
-				this.getSensor(portId, sensorSeries)
+				return this.getSensor(portId, sensorSeries)
 					.then((sensorData) => {
 						// sensorData looks like this: { type, voltage, ch0_raw, ch1_raw, value }
 
-						const interpretation = _getSensorInterpretation(sensorData.value, sensorData.type),
+						const state = this.getSensorState(sensorData.value, sensorData.type),
 							{value, type} = sensorData;
 
-						// add interpretation to sensorData obj
-						sensorData.interpretation = interpretation;
+						// add state to sensorData obj
+						sensorData.state = state;
 
 						// send event if the raw value of the sensor has changed
 						if (value !== sensorObj.lastValue) {
@@ -317,9 +316,9 @@ let SBrickExtended = (function() {
 							document.body.dispatchEvent(changeValueEvent);
 						}
 
-						// send event if the interpretation of the sensor has changed
-						if (interpretation !== sensorObj.lastInterpretation) {
-							sensorObj.lastInterpretation = interpretation;
+						// send event if the state of the sensor has changed
+						if (state !== sensorObj.lastState) {
+							sensorObj.lastState = state;
 							const event = new CustomEvent('sensorchange.sbrick', {detail: sensorData});
 							document.body.dispatchEvent(event);
 							
@@ -342,14 +341,14 @@ let SBrickExtended = (function() {
 			/**
 			* get a ports object with sensor properties (lastValue etc)
 			* @param {number} portId - The id of the port we want to read the sensor from
-			* @returns {object} - object with sensor properties ({lastValue, lastInterpretation, timer, keepAlive})
+			* @returns {object} - object with sensor properties ({lastValue, lastState, timer, keepAlive})
 			*/
 			_getSensorObj(portId) {
 				let sensorObj = this.sensors[portId];
 				if (typeof sensorObj === 'undefined') {
 					sensorObj = {
 						lastValue: null,
-						lastInterpretation: null,
+						lastState: null,
 						timer: null,
 						keepAlive: true
 					};
